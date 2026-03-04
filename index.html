@@ -1,172 +1,218 @@
-<script type="module">
-    // 1. IMPORT your data from the other file
-    import { allQuestions, practices } from './data.js';
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <title>Vibe Tracker</title>
+    <style>
+        :root { --blue: #007AFF; --bg: #F2F2F7; --text: #1C1C1E; --gray: #8E8E93; --green: #34C759; --red: #FF3B30; }
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        body { background-color: var(--bg); color: var(--text); font-family: -apple-system, system-ui, sans-serif; margin: 0; padding: env(safe-area-inset-top) 20px env(safe-area-inset-bottom) 20px; display: flex; flex-direction: column; align-items: center; }
+        #app-container { width: 100%; max-width: 500px; margin-top: 20px; }
+        .card { background: white; border-radius: 22px; padding: 25px; box-shadow: 0 10px 30px rgba(0,0,0,0.08); text-align: center; margin-bottom: 20px; border: 1px solid rgba(0,0,0,0.05); }
+        .btn { background: var(--blue); color: white; border: none; padding: 18px; width: 100%; border-radius: 16px; font-size: 18px; font-weight: 600; cursor: pointer; display: block; margin-bottom: 10px; transition: transform 0.1s; }
+        .btn:active { transform: scale(0.98); }
+        .btn-outline { background: white; color: var(--blue); border: 2px solid var(--blue); }
+        .btn-skip { background: none; color: var(--gray); padding: 10px; font-size: 14px; text-decoration: underline; cursor: pointer; border:none; width: 100%; }
+        input[type="range"] { width: 100%; margin: 25px 0; accent-color: var(--blue); height: 8px; border-radius: 5px; outline: none; }
+        .emoji-display { font-size: 4rem; margin: 10px 0; display: block; }
+        .practice-box { text-align: left; border-left: 6px solid var(--green); padding-left: 15px; }
+        .why-text { font-size: 0.9rem; color: var(--gray); font-style: italic; margin-top: 15px; line-height: 1.4; }
+    </style>
+</head>
+<body>
 
-    // 2. STATE
-    let activeQuestions = [];
-    let step = 0;
-    let session = { preMood: 5, postMood: 5, answers: {}, skippedQuestions: [], skippedActivity: false };
+    <div id="app-container">
+        <div id="mainUI"></div>
+    </div>
 
-    // 3. NAVIGATION (Expose functions to HTML)
-    // Because this is a "module", we must attach functions to 'window'
-    // so the buttons in your HTML can still find them.
-    window.startFlow = startFlow;
-    window.showHistory = showHistory;
-    window.showHome = showHome;
-    window.saveMood = saveMood;
-    window.recordAnswer = recordAnswer;
-    window.skipQ = skipQ;
-    window.skipActivity = skipActivity;
-    window.startSurvey = startSurvey;
+    <script type="module">
+        import { allQuestions, practices } from './data.js';
 
-    function showHome() {
-        const ui = document.getElementById('mainUI');
-        ui.innerHTML = `
-            <div class="card">
-                <h1>Vibe Tracker</h1>
-                <p>Ready for a check-in?</p>
-                <button class="btn" onclick="startFlow()">Start Check-in</button>
-                <button class="btn btn-outline" onclick="showHistory()">Passed Reports</button>
-            </div>
-        `;
-    }
+        let activeQuestions = [];
+        let step = 0;
+        let session = { preMood: 5, postMood: 5, answers: {}, skippedQuestions: [], skippedActivity: false };
 
-    function startFlow() {
-        session = { preMood: 5, postMood: 5, answers: {}, skippedQuestions: [], skippedActivity: false };
-        renderMood('pre');
-    }
+        // Emoji Map for Mood
+        const emojis = ["😫", "☹️", "🙁", "😐", "🙂", "😊", "😁", "🥳", "🤩", "✨"];
 
-    function renderMood(timing) {
-        const ui = document.getElementById('mainUI');
-        const title = timing === 'pre' ? "How's your mood right now?" : "How's your mood after the practice?";
-        ui.innerHTML = `
-            <div class="card">
-                <h2>${title}</h2>
-                <input type="range" id="moodS" min="1" max="10" value="5" oninput="mVal.innerText=this.value">
-                <p style="font-size: 3rem; font-weight: bold; margin:0;" id="mVal">5</p>
-                <button class="btn" onclick="saveMood('${timing}')">Confirm</button>
-            </div>
-        `;
-    }
+        // Expose functions to window for HTML button access
+        window.startFlow = startFlow;
+        window.saveMood = saveMood;
+        window.recordAnswer = recordAnswer;
+        window.skipQ = skipQ;
+        window.skipActivity = skipActivity;
+        window.showHistory = showHistory;
+        window.showHome = showHome;
+        window.renderMood = renderMood; // Critical fix for "I did it" button
 
-    function saveMood(timing) {
-        const val = parseInt(document.getElementById('moodS').value);
-        if (timing === 'pre') {
-            session.preMood = val;
-            startSurvey();
-        } else {
-            session.postMood = val;
-            saveAndFinish();
+        function updateEmoji(val) {
+            const el = document.getElementById('emojiVal');
+            if (el) el.innerText = emojis[Math.min(val - 1, 9)];
         }
-    }
 
-    function startSurvey() {
-        const shuffled = [...allQuestions].sort(() => 0.5 - Math.random());
-        activeQuestions = shuffled.slice(0, 5);
-        step = 0;
-        renderQuestion();
-    }
-
-    function renderQuestion() {
-        const ui = document.getElementById('mainUI');
-        if (step >= activeQuestions.length) {
-            renderPracticeSuggestion();
-            return;
-        }
-        const q = activeQuestions[step];
-        let inputs = '';
-        if (q.type === 'toggle' || q.type === 'choice') {
-            inputs = q.options.map(opt => `<button class="btn" onclick="recordAnswer('${opt}')">${opt}</button>`).join('');
-        } else {
-            inputs = `
-                <input type="range" id="qS" min="${q.min}" max="${q.max}" value="${Math.floor(q.max/2)}" oninput="qV.innerText=this.value">
-                <p><span id="qV">${Math.floor(q.max/2)}</span> ${q.unit || ''}</p>
-                <button class="btn" style="background:var(--green)" onclick="recordAnswer(document.getElementById('qS').value)">Confirm</button>
+        function showHome() {
+            const ui = document.getElementById('mainUI');
+            ui.innerHTML = `
+                <div class="card">
+                    <span class="emoji-display">🧠</span>
+                    <h1>Vibe Tracker</h1>
+                    <p>Check in with your nervous system.</p>
+                    <button class="btn" onclick="startFlow()">Start Check-in</button>
+                    <button class="btn btn-outline" onclick="showHistory()">Passed Reports</button>
+                </div>
             `;
         }
-        ui.innerHTML = `
-            <div class="card">
-                <p style="color:var(--blue); font-weight:bold;">Question ${step+1}/5</p>
-                <h2>${q.text}</h2>
-                ${inputs}
-                <button class="btn-skip" onclick="skipQ()">Skip Question</button>
-            </div>
-        `;
-        const s = document.getElementById('qS');
-        if (s) s.oninput = function() { document.getElementById('qV').innerText = this.value; };
-    }
 
-    function recordAnswer(val) {
-        session.answers[activeQuestions[step].id] = val;
-        step++;
-        renderQuestion();
-    }
+        function startFlow() {
+            session = { preMood: 5, postMood: 5, answers: {}, skippedQuestions: [], skippedActivity: false };
+            renderMood('pre');
+        }
 
-    function skipQ() {
-        session.skippedQuestions.push(activeQuestions[step].id);
-        step++;
-        renderQuestion();
-    }
+        function renderMood(timing) {
+            const ui = document.getElementById('mainUI');
+            const title = timing === 'pre' ? "How's your mood right now?" : "How's your mood after the practice?";
+            ui.innerHTML = `
+                <div class="card">
+                    <p style="text-transform:uppercase; font-size:0.7rem; letter-spacing:1px; color:var(--blue)">${timing}-practice</p>
+                    <h2>${title}</h2>
+                    <span id="emojiVal" class="emoji-display">${emojis[4]}</span>
+                    <input type="range" id="moodS" min="1" max="10" value="5"
+                        oninput="document.getElementById('mVal').innerText=this.value;
+                        const emojis = ['😫', '☹️', '🙁', '😐', '🙂', '😊', '😁', '🥳', '🤩', '✨'];
+                        document.getElementById('emojiVal').innerText = emojis[this.value-1];">
+                    <p style="font-size: 1.5rem; font-weight: bold;" id="mVal">5</p>
+                    <button class="btn" onclick="saveMood('${timing}')">Confirm Mood</button>
+                </div>
+            `;
+        }
 
-    function renderPracticeSuggestion() {
-        const ui = document.getElementById('mainUI');
-        const negatives = ['Yes', 'Tense', 'Chest', 'Fast', 'Strained', 'Raised', 'Furrowed', 'Slouched', 'Cold', 'Damp', 'Pressure', 'Cluttered', 'Stuck', 'Hopping'];
-        const triggeredIds = Object.keys(session.answers).filter(id => negatives.includes(session.answers[id]) || parseInt(session.answers[id]) > 5);
+        function saveMood(timing) {
+            const val = parseInt(document.getElementById('moodS').value);
+            if (timing === 'pre') {
+                session.preMood = val;
+                const shuffled = [...allQuestions].sort(() => 0.5 - Math.random());
+                activeQuestions = shuffled.slice(0, 5);
+                step = 0;
+                renderQuestion();
+            } else {
+                session.postMood = val;
+                saveAndFinish();
+            }
+        }
 
-        const suggested = practices.find(p => p.trigger_ids.some(tid => triggeredIds.includes(tid))) || practices[Math.floor(Math.random() * practices.length)];
+        function renderQuestion() {
+            const ui = document.getElementById('mainUI');
+            if (step >= activeQuestions.length) {
+                renderPracticeSuggestion();
+                return;
+            }
+            const q = activeQuestions[step];
+            let inputs = '';
+            if (q.type === 'toggle' || q.type === 'choice') {
+                inputs = q.options.map(opt => `<button class="btn" onclick="recordAnswer('${opt}')">${opt}</button>`).join('');
+            } else {
+                const mid = Math.floor(q.max/2);
+                inputs = `
+                    <input type="range" id="qS" min="${q.min}" max="${q.max}" value="${mid}" oninput="document.getElementById('qV').innerText=this.value">
+                    <p><span id="qV">${mid}</span> ${q.unit || ''}</p>
+                    <button class="btn" style="background:var(--green)" onclick="recordAnswer(document.getElementById('qS').value)">Confirm</button>
+                `;
+            }
+            ui.innerHTML = `
+                <div class="card">
+                    <p style="color:var(--blue); font-weight:bold; font-size:0.8rem;">STEP ${step+1} OF 5</p>
+                    <h2 style="margin-top:10px;">${q.text}</h2>
+                    <div style="margin-top:20px;">${inputs}</div>
+                    <button class="btn-skip" onclick="skipQ()">Skip Question</button>
+                </div>
+            `;
+        }
 
-        ui.innerHTML = `
-            <div class="card" style="border-left: 6px solid var(--green); text-align: left;">
-                <p style="color:var(--green); font-weight:bold;">💡 Suggested Practice</p>
-                <h2 style="margin-top:0;">${suggested.practice}</h2>
-                <p style="color:var(--text);">${suggested.action}</p>
-                <button class="btn" style="background:var(--green)" onclick="renderMood('post')">I did it!</button>
-                <button class="btn-skip" style="width:100%" onclick="skipActivity()">Skip Practice</button>
-            </div>
-        `;
-    }
+        function recordAnswer(val) {
+            session.answers[activeQuestions[step].id] = val;
+            step++;
+            renderQuestion();
+        }
 
-    function skipActivity() {
-        session.skippedActivity = true;
-        renderMood('post');
-    }
+        function skipQ() {
+            session.skippedQuestions.push(activeQuestions[step].id);
+            step++;
+            renderQuestion();
+        }
 
-    function saveAndFinish() {
-        const logs = JSON.parse(localStorage.getItem('logs') || "[]");
-        logs.unshift({ ...session, timestamp: new Date().toISOString() });
-        localStorage.setItem('logs', JSON.stringify(logs.slice(0, 50)));
+        function renderPracticeSuggestion() {
+            const ui = document.getElementById('mainUI');
+            const negatives = ['Yes', 'Tense', 'Chest', 'Fast', 'Strained', 'Raised', 'Furrowed', 'Slouched', 'Cold', 'Damp', 'Pressure', 'Cluttered', 'Stuck', 'Hopping'];
+            const triggeredIds = Object.keys(session.answers).filter(id => negatives.includes(session.answers[id]) || parseInt(session.answers[id]) > 5);
 
-        const diff = session.postMood - session.preMood;
-        document.getElementById('mainUI').innerHTML = `
-            <div class="card">
-                <h2>Check-in Saved</h2>
-                <p>${diff > 0 ? 'Your mood improved by '+diff+' points!' : 'Session complete.'}</p>
-                <button class="btn" onclick="showHome()">Back to Home</button>
-            </div>
-        `;
-    }
+            const suggested = practices.find(p => p.trigger_ids.some(tid => triggeredIds.includes(tid))) || practices[Math.floor(Math.random() * practices.length)];
 
-    function showHistory() {
-        const ui = document.getElementById('mainUI');
-        const logs = JSON.parse(localStorage.getItem('logs') || "[]");
-        let html = `<div class="card"><h2>Passed Reports</h2>`;
-        if (logs.length === 0) html += `<p>No data yet.</p>`;
+            ui.innerHTML = `
+                <div class="card practice-box">
+                    <p style="color:var(--green); font-weight:bold; margin-bottom:5px;">✨ RECOMMENDED PRACTICE</p>
+                    <h2 style="margin-top:0;">${suggested.practice}</h2>
+                    <p style="color:var(--text); font-size:1.1rem; line-height:1.5;">${suggested.action}</p>
+                    <div class="why-text"><strong>Why this works:</strong> ${suggested.why}</div>
+                    <button class="btn" style="background:var(--green); margin-top:25px;" onclick="renderMood('post')">I did it!</button>
+                    <button class="btn-skip" onclick="skipActivity()">Skip Practice</button>
+                </div>
+            `;
+        }
 
-        logs.forEach(log => {
-            const date = new Date(log.timestamp).toLocaleString([], {month:'numeric', day:'numeric', hour:'2-digit', minute:'2-digit'});
-            const diff = (log.postMood && log.preMood) ? (log.postMood - log.preMood) : 0;
-            html += `
-                <div class="history-item" style="text-align:left; border-bottom:1px solid #eee; padding:10px 0;">
-                    <div style="display:flex; justify-content:space-between;">
-                        <small>${date}</small>
-                        <strong style="color:${diff > 0 ? 'var(--green)' : 'var(--gray)'}">${diff > 0 ? '+' : ''}${diff} Mood</strong>
-                    </div>
-                    <div style="font-size:0.7rem; color:var(--gray);">${Object.entries(log.answers || {}).map(([k,v]) => `${k}:<b>${v}</b>`).join(' • ')}</div>
-                </div>`;
-        });
-        html += `<button class="btn btn-outline" style="margin-top:20px" onclick="showHome()">Back</button></div>`;
-        ui.innerHTML = html;
-    }
+        function skipActivity() {
+            session.skippedActivity = true;
+            renderMood('post');
+        }
 
-    window.onload = showHome;
-</script>
+        function saveAndFinish() {
+            const logs = JSON.parse(localStorage.getItem('logs') || "[]");
+            logs.unshift({ ...session, timestamp: new Date().toISOString() });
+            localStorage.setItem('logs', JSON.stringify(logs.slice(0, 50)));
+
+            const diff = session.postMood - session.preMood;
+            const ui = document.getElementById('mainUI');
+            ui.innerHTML = `
+                <div class="card">
+                    <span class="emoji-display">${diff > 0 ? '📈' : '✅'}</span>
+                    <h2>Check-in Saved</h2>
+                    <p>${diff > 0 ? 'Your mood improved by '+diff+' points!' : 'Data logged successfully.'}</p>
+                    <button class="btn" onclick="showHome()">Back to Home</button>
+                </div>
+            `;
+        }
+
+        function showHistory() {
+            const ui = document.getElementById('mainUI');
+            const logs = JSON.parse(localStorage.getItem('logs') || "[]");
+            let html = `<div class="card"><h2>History</h2>`;
+            if (logs.length === 0) html += `<p>No reports found.</p>`;
+
+            logs.forEach(log => {
+                const date = new Date(log.timestamp).toLocaleString([], {month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'});
+                const diff = (log.postMood - log.preMood) || 0;
+                html += `
+                    <div style="text-align:left; border-bottom:1px solid #eee; padding:15px 0;">
+                        <div style="display:flex; justify-content:space-between;">
+                            <small>${date}</small>
+                            <strong style="color:${diff > 0 ? 'var(--green)' : 'var(--red)'}">${diff >= 0 ? '+' : ''}${diff}</strong>
+                        </div>
+                        <div style="font-size:0.7rem; color:var(--gray); margin-top:5px;">
+                            ${Object.entries(log.answers || {}).slice(0,3).map(([k,v]) => `${k}:<b>${v}</b>`).join(' • ')}...
+                        </div>
+                    </div>`;
+            });
+
+            html += `<button class="btn btn-outline" style="margin-top:20px" onclick="showHome()">Back</button></div>`;
+            ui.innerHTML = html;
+        }
+
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', showHome);
+        } else {
+            showHome();
+        }
+    </script>
+</body>
+</html>
