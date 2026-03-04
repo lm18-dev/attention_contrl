@@ -3,45 +3,73 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <title>Usage Tracker</title>
-
+    <title>Daily Check-in</title>
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <link rel="apple-touch-icon" href="icon.png">
-
     <link rel="manifest" href="manifest.json">
-
     <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica;
-               background: #f0f2f5; display: flex; flex-direction: column; align-items: center;
-               justify-content: center; height: 100vh; margin: 0; }
-        .card { background: white; padding: 2rem; border-radius: 20px; box-shadow: 0 10px 20px rgba(0,0,0,0.1); text-align: center; }
-        button { background: #007AFF; color: white; border: none; padding: 15px 30px; border-radius: 12px; font-size: 18px; font-weight: 600; cursor: pointer; }
+        :root { --ios-blue: #007AFF; --bg: #f2f2f7; }
+        body { font-family: -apple-system, system-ui; background: var(--bg); margin: 0; padding: 20px; padding-top: 60px; }
+        .card { background: white; padding: 20px; border-radius: 15px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); margin-bottom: 20px; }
+        h2 { margin-top: 0; font-size: 1.2rem; color: #1c1c1e; }
+        input[type="range"] { width: 100%; margin: 15px 0; }
+        textarea { width: 100%; border: 1px solid #d1d1d6; border-radius: 8px; padding: 10px; box-sizing: border-box; font-family: inherit; }
+        button { background: var(--ios-blue); color: white; border: none; width: 100%; padding: 12px; border-radius: 10px; font-weight: 600; font-size: 16px; margin-top: 10px; }
+        .entry { border-bottom: 1px solid #e5e5ea; padding: 10px 0; font-size: 0.9rem; }
+        .entry:last-child { border: none; }
+        .mood-val { font-size: 2rem; font-weight: bold; color: var(--ios-blue); }
     </style>
 </head>
 <body>
+
     <div class="card">
-        <h1>App Monitor</h1>
-        <p>Current Session: <span id="timer">00:00</span></p>
-        <button onclick="startMonitor()">Start Tracking</button>
+        <h2>How's your mood?</h2>
+        <div style="text-align: center;">
+            <span class="mood-val" id="moodNum">5</span>/10
+            <input type="range" id="mood" min="1" max="10" value="5" oninput="moodNum.innerText=this.value">
+        </div>
+    </div>
+
+    <div class="card">
+        <h2>What did you do today?</h2>
+        <textarea id="activities" rows="3" placeholder="Exercised, read, worked on app..."></textarea>
+        <button onclick="saveEntry()">Log Today</button>
+    </div>
+
+    <div class="card">
+        <h2>History</h2>
+        <div id="historyList"></div>
     </div>
 
     <script>
-        // Simple timer logic for your "Monitor"
-        let seconds = 0;
-        function startMonitor() {
-            setInterval(() => {
-                seconds++;
-                let m = Math.floor(seconds / 60);
-                let s = seconds % 60;
-                document.getElementById('timer').innerText = `${m}:${s < 10 ? '0'+s : s}`;
-            }, 1000);
+        function saveEntry() {
+            const entry = {
+                date: new Date().toLocaleDateString(),
+                mood: document.getElementById('mood').value,
+                activities: document.getElementById('activities').value
+            };
+
+            let history = JSON.parse(localStorage.getItem('logs') || "[]");
+            history.unshift(entry); // Add to start
+            localStorage.setItem('logs', JSON.stringify(history));
+
+            document.getElementById('activities').value = "";
+            renderHistory();
         }
 
-        // Register the Service Worker (Required for PWA)
-        if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.register('sw.js');
+        function renderHistory() {
+            const history = JSON.parse(localStorage.getItem('logs') || "[]");
+            document.getElementById('historyList').innerHTML = history.map(h => `
+                <div class="entry">
+                    <strong>${h.date}</strong> — Mood: ${h.mood}/10<br>
+                    <span style="color: #636366;">${h.activities}</span>
+                </div>
+            `).join('');
         }
+
+        // Load history on start
+        renderHistory();
+        if ('serviceWorker' in navigator) { navigator.serviceWorker.register('sw.js'); }
     </script>
 </body>
 </html>
