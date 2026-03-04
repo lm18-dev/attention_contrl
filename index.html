@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>Usage Tracker</title>
+
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <link rel="apple-touch-icon" href="icon.png">
+
+    <link rel="manifest" href="manifest.json">
+
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica;
+               background: #f0f2f5; display: flex; flex-direction: column; align-items: center;
+               justify-content: center; height: 100vh; margin: 0; }
+        .card { background: white; padding: 2rem; border-radius: 20px; box-shadow: 0 10px 20px rgba(0,0,0,0.1); text-align: center; }
+        button { background: #007AFF; color: white; border: none; padding: 15px 30px; border-radius: 12px; font-size: 18px; font-weight: 600; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h1>App Monitor</h1>
+        <p>Current Session: <span id="timer">00:00</span></p>
+        <button onclick="startMonitor()">Start Tracking</button>
+    </div>
+
+    <script>
+        // Simple timer logic for your "Monitor"
+        let seconds = 0;
+        function startMonitor() {
+            setInterval(() => {
+                seconds++;
+                let m = Math.floor(seconds / 60);
+                let s = seconds % 60;
+                document.getElementById('timer').innerText = `${m}:${s < 10 ? '0'+s : s}`;
+            }, 1000);
+        }
+
+        // Register the Service Worker (Required for PWA)
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('sw.js');
+        }
+    </script>
+</body>
+</html>
