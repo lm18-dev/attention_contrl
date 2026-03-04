@@ -1,262 +1,172 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <title>Vibe Tracker</title>
-    <style>
-        /* 1. Reset & iOS Fixes */
-        :root { --blue: #007AFF; --bg: #F2F2F7; --text: #1C1C1E; }
-        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+<script type="module">
+    // 1. IMPORT your data from the other file
+    import { allQuestions, practices } from './data.js';
 
-        body {
-            background-color: var(--bg);
-            color: var(--text);
-            font-family: -apple-system, system-ui, sans-serif;
-            margin: 0;
-            padding: env(safe-area-inset-top) 20px env(safe-area-inset-bottom) 20px;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-        }
+    // 2. STATE
+    let activeQuestions = [];
+    let step = 0;
+    let session = { preMood: 5, postMood: 5, answers: {}, skippedQuestions: [], skippedActivity: false };
 
-        /* 2. Layout Containers */
-        #app-container { width: 100%; max-width: 500px; margin-top: 20px; }
+    // 3. NAVIGATION (Expose functions to HTML)
+    // Because this is a "module", we must attach functions to 'window'
+    // so the buttons in your HTML can still find them.
+    window.startFlow = startFlow;
+    window.showHistory = showHistory;
+    window.showHome = showHome;
+    window.saveMood = saveMood;
+    window.recordAnswer = recordAnswer;
+    window.skipQ = skipQ;
+    window.skipActivity = skipActivity;
+    window.startSurvey = startSurvey;
 
-        .card {
-            background: white;
-            border-radius: 18px;
-            padding: 25px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
-            text-align: center;
-            margin-bottom: 20px;
-        }
-
-        /* 3. Elements */
-        h2 { font-size: 22px; margin-bottom: 10px; }
-        p { color: #636366; margin-bottom: 25px; }
-
-        .btn {
-            background: var(--blue);
-            color: white;
-            border: none;
-            padding: 18px;
-            width: 100%;
-            border-radius: 14px;
-            font-size: 18px;
-            font-weight: 600;
-            cursor: pointer;
-            display: block;
-            margin-bottom: 10px;
-        }
-
-        input[type="range"] { width: 100%; margin: 20px 0; accent-color: var(--blue); }
-    </style>
-</head>
-<body>
-
-    <div id="app-container">
-        <div id="surveyUI">
+    function showHome() {
+        const ui = document.getElementById('mainUI');
+        ui.innerHTML = `
             <div class="card">
-                <h2>Loading App...</h2>
-                <p>If this stays white, please refresh Safari.</p>
-                <button class="btn" onclick="startSurvey()">Force Start</button>
+                <h1>Vibe Tracker</h1>
+                <p>Ready for a check-in?</p>
+                <button class="btn" onclick="startFlow()">Start Check-in</button>
+                <button class="btn btn-outline" onclick="showHistory()">Passed Reports</button>
             </div>
-        </div>
-    </div>
+        `;
+    }
 
-    <script>
-        // DATA: All your variables
-        const questions = [
-            // --- 1. PHYSIOLOGICAL & SOMATIC ---
-            { id: 'jaw', text: "Is your jaw clenched or are your shoulders raised?", type: 'toggle', options: ['Relaxed', 'Tense'] },
-            { id: 'breathing', text: "Are you taking shallow chest breaths right now?", type: 'toggle', options: ['Belly', 'Chest'] },
-            { id: 'fidget', text: "Level of leg bouncing or finger tapping today?", type: 'range', min: 0, max: 10, unit: 'intensity' },
-            { id: 'temp_hands', text: "Hands or feet felt unusually cold or clammy?", type: 'toggle', options: ['No', 'Yes'] },
-            { id: 'posture', text: "Describe your current spine position:", type: 'toggle', options: ['Upright', 'Slouched'] },
-            { id: 'headache', text: "Presence of a 'tight band' headache today?", type: 'toggle', options: ['None', 'Present'] },
-            { id: 'stomach', text: "Felt 'butterflies' or a tight/knotted stomach?", type: 'toggle', options: ['No', 'Yes'] },
-            { id: 'noise', text: "Did sudden noises (pings, horns) feel 'sharp'?", type: 'range', min: 0, max: 10, unit: 'jarring' },
-            { id: 'eye_dry', text: "Do your eyes feel heavy, dry, or strained?", type: 'toggle', options: ['Fresh', 'Strained'] },
-            { id: 'speech_speed', text: "Have you been speaking faster than usual?", type: 'toggle', options: ['Normal', 'Fast'] },
-            { id: 'heart_race', text: "Momentary racing heart for no obvious reason?", type: 'toggle', options: ['No', 'Yes'] },
-            { id: 'sweat', text: "Sweating despite a comfortable temperature?", type: 'toggle', options: ['No', 'Yes'] },
-            { id: 'dizzy', text: "Felt lightheaded when standing up quickly?", type: 'toggle', options: ['No', 'Yes'] },
-            { id: 'muscle_stiff', text: "Random muscle stiffness in your neck or back?", type: 'range', min: 0, max: 10, unit: 'discomfort' },
-            { id: 'skin_pick', text: "Frequency of mindless skin picking or nail biting?", type: 'range', min: 0, max: 10, unit: 'times' },
-            { id: 'throat_lump', text: "Felt a 'lump' or tightness in your throat?", type: 'toggle', options: ['No', 'Yes'] },
+    function startFlow() {
+        session = { preMood: 5, postMood: 5, answers: {}, skippedQuestions: [], skippedActivity: false };
+        renderMood('pre');
+    }
 
-            // --- 2. EXECUTIVE FUNCTION ---
-            { id: 'abandoned', text: "Tasks you started today but left unfinished?", type: 'range', min: 0, max: 10, unit: 'tasks' },
-            { id: 'decisions', text: "Felt 'stuck' making a very simple choice?", type: 'toggle', options: ['No', 'Yes'] },
-            { id: 'memory_slip', text: "Forgot a basic word or where you put an item?", type: 'range', min: 0, max: 5, unit: 'slips' },
-            { id: 're_reading', text: "Re-read the same sentence multiple times?", type: 'range', min: 0, max: 10, unit: 'times' },
-            { id: 'tabs_count', text: "Number of browser tabs/apps open right now?", type: 'range', min: 0, max: 20, unit: 'tabs' },
-            { id: 'lost_items', text: "Time spent looking for lost items today?", type: 'range', min: 0, max: 30, unit: 'mins' },
-            { id: 'interrupting', text: "Frequency of interrupting others mid-sentence?", type: 'range', min: 0, max: 10, unit: 'times' },
-            { id: 'staring_space', text: "Frequency of 'staring into space' mindlessly?", type: 'range', min: 0, max: 10, unit: 'freq' },
-            { id: 'desk_clutter', text: "Is your immediate desk or surface messy?", type: 'toggle', options: ['Clean', 'Messy'] },
-            { id: 'time_pressure', text: "Feeling of 'racing against the clock' all day?", type: 'range', min: 0, max: 10, unit: 'pressure' },
-            { id: 'micro_avoid', text: "Avoided a 2-minute task for over an hour?", type: 'toggle', options: ['No', 'Yes'] },
-            { id: 'mental_static', text: "Sense of 'mental noise' or too many thoughts?", type: 'range', min: 0, max: 10, unit: 'chaos' },
-            { id: 'missed_event', text: "Forgot or nearly missed a scheduled event?", type: 'toggle', options: ['No', 'Yes'] },
-            { id: 'typo_freq', text: "Frequency of silly errors or typos in messages?", type: 'range', min: 0, max: 10, unit: 'errors' },
-            { id: 'list_reliance', text: "Did you rely on written lists just to function?", type: 'toggle', options: ['No', 'Yes'] },
-            { id: 'listening_focus', text: "Able to listen to a story without drifting?", type: 'toggle', options: ['Yes', 'No'] },
+    function renderMood(timing) {
+        const ui = document.getElementById('mainUI');
+        const title = timing === 'pre' ? "How's your mood right now?" : "How's your mood after the practice?";
+        ui.innerHTML = `
+            <div class="card">
+                <h2>${title}</h2>
+                <input type="range" id="moodS" min="1" max="10" value="5" oninput="mVal.innerText=this.value">
+                <p style="font-size: 3rem; font-weight: bold; margin:0;" id="mVal">5</p>
+                <button class="btn" onclick="saveMood('${timing}')">Confirm</button>
+            </div>
+        `;
+    }
 
-            // --- 3. DIGITAL HYGIENE ---
-            { id: 'doomscroll', text: "Time spent on mindless scrolling/feeds?", type: 'range', min: 0, max: 5, unit: 'hours' },
-            { id: 'wake_phone', text: "Used phone within 5 mins of waking up?", type: 'toggle', options: ['No', 'Yes'] },
-            { id: 'ghost_vibrate', text: "Thought your phone buzzed when it didn't?", type: 'toggle', options: ['No', 'Yes'] },
-            { id: 'unread_pings', text: "Current unread notification count?", type: 'range', min: 0, max: 20, unit: 'pings' },
-            { id: 'online_annoy', text: "Felt annoyed by an online comment today?", type: 'toggle', options: ['No', 'Yes'] },
-            { id: 'dual_screen', text: "Watched TV while also on your phone?", type: 'toggle', options: ['Single', 'Dual'] },
-            { id: 'video_numb', text: "Watched videos purely to 'not think'?", type: 'toggle', options: ['No', 'Yes'] },
-            { id: 'social_envy', text: "Felt 'less than' while looking at others?", type: 'range', min: 0, max: 10, unit: 'sting' },
-            { id: 'message_drain', text: "Ignored a message because you felt drained?", type: 'range', min: 0, max: 5, unit: 'texts' },
-            { id: 'bed_scrolling', text: "Used phone while already lying in bed?", type: 'toggle', options: ['No', 'Yes'] },
-            { id: 'refresh_freq', text: "Frequency of 'pulling to refresh' an app?", type: 'range', min: 0, max: 10, unit: 'freq' },
-            { id: 'tab_hopping', text: "Switched apps more than 3 times in 1 minute?", type: 'toggle', options: ['No', 'Yes'] },
-
-            // --- 4. SLEEP, ENERGY & METABOLISM ---
-            { id: 'snooze_count', text: "Times you hit 'Snooze' this morning?", type: 'range', min: 0, max: 5, unit: 'times' },
-            { id: 'sleep_total', text: "Total hours of sleep last night?", type: 'range', min: 0, max: 12, unit: 'hours' },
-            { id: 'wake_refresh', text: "Did you feel 'refreshed' upon waking?", type: 'range', min: 0, max: 10, unit: 'score' },
-            { id: 'afternoon_slump', text: "Intensity of the 3 PM energy crash?", type: 'range', min: 0, max: 10, unit: 'fatigue' },
-            { id: 'nap_duration', text: "Duration of naps taken today?", type: 'range', min: 0, max: 120, unit: 'mins' },
-            { id: 'sleep_latency', text: "Time it took to fall asleep last night?", type: 'range', min: 0, max: 60, unit: 'mins' },
-            { id: 'dream_type', text: "Had vivid or stressful dreams?", type: 'toggle', options: ['Calm', 'Vivid'] },
-            { id: 'night_waking', text: "Times you woke up during the night?", type: 'range', min: 0, max: 5, unit: 'times' },
-            { id: 'yawn_freq', text: "Frequency of yawning today?", type: 'range', min: 0, max: 10, unit: 'times' },
-            { id: 'eye_circles', text: "Noticeable dark circles or puffiness?", type: 'toggle', options: ['No', 'Yes'] },
-            { id: 'coffee_total', text: "Total caffeine count today?", type: 'range', min: 0, max: 10, unit: 'cups' },
-            { id: 'water_total', text: "Total water intake today?", type: 'range', min: 0, max: 12, unit: 'glasses' },
-            { id: 'sugar_crave', text: "Intensity of desire for sweets/carbs?", type: 'range', min: 0, max: 10, unit: 'craving' },
-            { id: 'skipped_meal', text: "Meals skipped due to 'busy-ness'?", type: 'range', min: 0, max: 3, unit: 'meals' },
-            { id: 'salt_crave', text: "Strong craving for salty/savory snacks?", type: 'toggle', options: ['No', 'Yes'] },
-            { id: 'exercise_mins', text: "Minutes of intentional exercise today?", type: 'range', min: 0, max: 60, unit: 'mins' },
-            { id: 'alcohol_units', text: "Alcohol units consumed in the last 24h?", type: 'range', min: 0, max: 10, unit: 'units' },
-            { id: 'sunlight_mins', text: "Minutes spent in direct sunlight?", type: 'range', min: 0, max: 60, unit: 'mins' },
-
-            // --- 5. SOCIAL AFFECT & RESONANCE ---
-            { id: 'laugh_belly', text: "Did you have a genuine belly laugh today?", type: 'toggle', options: ['No', 'Yes'] },
-            { id: 'fuse_length', text: "How 'short' was your fuse with people?", type: 'range', min: 0, max: 10, unit: 'shortness' },
-            { id: 'avoid_chat', text: "Desire to avoid casual greetings/convo?", type: 'range', min: 0, max: 10, unit: 'avoidance' },
-            { id: 'compliment_out', text: "Did you give someone a genuine compliment?", type: 'toggle', options: ['No', 'Yes'] },
-            { id: 'music_flat', text: "Did music feel 'flat' or 'boring' today?", type: 'toggle', options: ['Reactive', 'Flat'] },
-            { id: 'isolation_level', text: "Spent most of the day in one room?", type: 'toggle', options: ['No', 'Yes'] },
-            { id: 'awe_moment', text: "Noticed something beautiful (nature/art)?", type: 'toggle', options: ['No', 'Yes'] },
-            { id: 'snapping_voice', text: "Did you raise your voice at anyone?", type: 'toggle', options: ['No', 'Yes'] },
-            { id: 'eye_contact', text: "Ability to hold eye contact today?", type: 'toggle', options: ['Normal', 'Difficult'] },
-            { id: 'cynicism_level', text: "Frequency of 'eye-rolling' thoughts?", type: 'range', min: 0, max: 10, unit: 'freq' },
-            { id: 'physical_touch', text: "Hugged someone or shook a hand today?", type: 'toggle', options: ['No', 'Yes'] },
-            { id: 'belonging', text: "Felt like 'part of the team' today?", type: 'range', min: 0, max: 10, unit: 'connection' },
-            { id: 'venting_time', text: "Time spent complaining to others?", type: 'range', min: 0, max: 30, unit: 'mins' },
-            { id: 'kindness_act', text: "Did you help a stranger or friend today?", type: 'toggle', options: ['No', 'Yes'] },
-            { id: 'humor_success', text: "Made a joke that someone laughed at?", type: 'toggle', options: ['No', 'Yes'] },
-
-            // --- 6. RESILIENCE & OUTLOOK ---
-            { id: 'tomorrow_dread', text: "Feeling of 'heaviness' about tomorrow?", type: 'range', min: 0, max: 10, unit: 'weight' },
-            { id: 'nostalgia_freq', text: "Stuck thinking about the 'good old days'?", type: 'range', min: 0, max: 10, unit: 'freq' },
-            { id: 'hygiene_neglect', text: "Neglected a habit (shaving, skin care)?", type: 'toggle', options: ['No', 'Yes'] },
-            { id: 'hobby_time', text: "Engaged in a hobby for over 15 mins?", type: 'toggle', options: ['No', 'Yes'] },
-            { id: 'impulse_spend', text: "Impulse purchases made today?", type: 'range', min: 0, max: 5, unit: 'buys' },
-            { id: 'clumsy_incidents', text: "Dropped an item or bumped into a door?", type: 'range', min: 0, max: 5, unit: 'times' },
-            { id: 'boredom_pain', text: "Painful sense of 'nothing to do'?", type: 'range', min: 0, max: 10, unit: 'intensity' },
-            { id: 'achievement', text: "Felt like you 'achieved' something today?", type: 'range', min: 0, max: 10, unit: 'score' },
-            { id: 'bad_news', text: "Read 'disturbing' news for over 10 mins?", type: 'toggle', options: ['No', 'Yes'] },
-            { id: 'others_opinion', text: "Worried about what others thought of you?", type: 'range', min: 0, max: 10, unit: 'anxiety' },
-            { id: 'mean_inner_voice', text: "Was your inner voice 'mean' today?", type: 'range', min: 0, max: 10, unit: 'severity' },
-            { id: 'creative_act', text: "Made/wrote/sketched something new?", type: 'toggle', options: ['No', 'Yes'] },
-            { id: 'silence_mins', text: "Minutes spent in total silence today?", type: 'range', min: 0, max: 30, unit: 'mins' },
-            { id: 'pet_time', text: "Spent time with a pet or animal?", type: 'toggle', options: ['No', 'Yes'] },
-            { id: 'tidying_up', text: "Did you do 5 minutes of tidying up?", type: 'toggle', options: ['No', 'Yes'] },
-            { id: 'social_comparison', text: "Checked how you 'stack up' vs peers?", type: 'toggle', options: ['No', 'Yes'] },
-            { id: 'stuck_routine', text: "Feeling of being 'trapped' in routine?", type: 'range', min: 0, max: 10, unit: 'level' },
-            { id: 'gratitude_find', text: "Identified one thing that went right?", type: 'toggle', options: ['No', 'Yes'] },
-            { id: 'traffic_rage', text: "Irritation level while waiting/traffic?", type: 'range', min: 0, max: 10, unit: 'rage' },
-            { id: 'changed_clothes', text: "Did you change out of pajamas today?", type: 'toggle', options: ['No', 'Yes'] },
-            { id: 'plant_care', text: "Noticed or cared for a plant?", type: 'toggle', options: ['No', 'Yes'] },
-            { id: 'future_visual', text: "Can you visualize something good next week?", type: 'toggle', options: ['No', 'Yes'] },
-            { id: 'glad_ending', text: "Are you glad this survey is over?", type: 'toggle', options: ['No', 'Yes'] }
-        ];
-
-                let activeQuestions = []; // This will hold our 5 random ones
-        let step = 0;
-        let sessionResults = {};
-
-        function startSurvey() {
-            step = 0;
-            sessionResults = {};
-
-            // 2. SHUFFLE and PICK 5
-            // We clone the array so we don't destroy the original list
-            const shuffled = [...allQuestions].sort(() => 0.5 - Math.random());
-            activeQuestions = shuffled.slice(0, 5);
-
-            render();
+    function saveMood(timing) {
+        const val = parseInt(document.getElementById('moodS').value);
+        if (timing === 'pre') {
+            session.preMood = val;
+            startSurvey();
+        } else {
+            session.postMood = val;
+            saveAndFinish();
         }
+    }
 
-        function render() {
-            const ui = document.getElementById('surveyUI');
+    function startSurvey() {
+        const shuffled = [...allQuestions].sort(() => 0.5 - Math.random());
+        activeQuestions = shuffled.slice(0, 5);
+        step = 0;
+        renderQuestion();
+    }
 
-            // Check if we finished the 5 questions
-            if (step >= activeQuestions.length) {
-                ui.innerHTML = `
-                    <div class="card">
-                        <h2>Vibe Check Complete</h2>
-                        <p>Data synced to your local logs.</p>
-                        <button class="btn" onclick="startSurvey()">Check 5 More?</button>
-                    </div>`;
-                saveToDisk();
-                return;
-            }
-
-            const q = activeQuestions[step];
-
-            // UI drawing logic (Choice vs Range)
-            let inputHTML = '';
-            if (q.type === 'choice') {
-                inputHTML = q.options.map(opt =>
-                    `<button class="btn" onclick="next('${opt}')">${opt}</button>`
-                ).join('');
-            } else {
-                inputHTML = `
-                    <input type="range" id="slider" min="${q.min}" max="${q.max}" value="${q.min}">
-                    <p>Current: <span id="val">${q.min}</span></p>
-                    <button class="btn" onclick="next(document.getElementById('slider').value)">Confirm</button>
-                `;
-            }
-
-            ui.innerHTML = `
-                <div class="card">
-                    <p style="color:var(--blue); font-weight:bold;">Progress: ${step + 1} / 5</p>
-                    <h2>${q.text}</h2>
-                    ${inputHTML}
-                </div>
+    function renderQuestion() {
+        const ui = document.getElementById('mainUI');
+        if (step >= activeQuestions.length) {
+            renderPracticeSuggestion();
+            return;
+        }
+        const q = activeQuestions[step];
+        let inputs = '';
+        if (q.type === 'toggle' || q.type === 'choice') {
+            inputs = q.options.map(opt => `<button class="btn" onclick="recordAnswer('${opt}')">${opt}</button>`).join('');
+        } else {
+            inputs = `
+                <input type="range" id="qS" min="${q.min}" max="${q.max}" value="${Math.floor(q.max/2)}" oninput="qV.innerText=this.value">
+                <p><span id="qV">${Math.floor(q.max/2)}</span> ${q.unit || ''}</p>
+                <button class="btn" style="background:var(--green)" onclick="recordAnswer(document.getElementById('qS').value)">Confirm</button>
             `;
-
-            // Re-attach slider listener if it exists
-            const s = document.getElementById('slider');
-            if(s) s.oninput = function() { document.getElementById('val').innerText = this.value; }
         }
+        ui.innerHTML = `
+            <div class="card">
+                <p style="color:var(--blue); font-weight:bold;">Question ${step+1}/5</p>
+                <h2>${q.text}</h2>
+                ${inputs}
+                <button class="btn-skip" onclick="skipQ()">Skip Question</button>
+            </div>
+        `;
+        const s = document.getElementById('qS');
+        if (s) s.oninput = function() { document.getElementById('qV').innerText = this.value; };
+    }
 
-        function next(val) {
-            sessionResults[activeQuestions[step].id] = val;
-            step++;
-            render();
-        }
+    function recordAnswer(val) {
+        session.answers[activeQuestions[step].id] = val;
+        step++;
+        renderQuestion();
+    }
 
-        function saveToDisk() {
-            const logs = JSON.parse(localStorage.getItem('logs') || "[]");
-            // We save the timestamp so we can track trends over time
-            logs.unshift({ timestamp: new Date().toISOString(), ...sessionResults });
-            localStorage.setItem('logs', JSON.stringify(logs));
-        }
+    function skipQ() {
+        session.skippedQuestions.push(activeQuestions[step].id);
+        step++;
+        renderQuestion();
+    }
 
-        window.onload = startSurvey;
-        
-    </script>
-</body>
-</html>
+    function renderPracticeSuggestion() {
+        const ui = document.getElementById('mainUI');
+        const negatives = ['Yes', 'Tense', 'Chest', 'Fast', 'Strained', 'Raised', 'Furrowed', 'Slouched', 'Cold', 'Damp', 'Pressure', 'Cluttered', 'Stuck', 'Hopping'];
+        const triggeredIds = Object.keys(session.answers).filter(id => negatives.includes(session.answers[id]) || parseInt(session.answers[id]) > 5);
+
+        const suggested = practices.find(p => p.trigger_ids.some(tid => triggeredIds.includes(tid))) || practices[Math.floor(Math.random() * practices.length)];
+
+        ui.innerHTML = `
+            <div class="card" style="border-left: 6px solid var(--green); text-align: left;">
+                <p style="color:var(--green); font-weight:bold;">💡 Suggested Practice</p>
+                <h2 style="margin-top:0;">${suggested.practice}</h2>
+                <p style="color:var(--text);">${suggested.action}</p>
+                <button class="btn" style="background:var(--green)" onclick="renderMood('post')">I did it!</button>
+                <button class="btn-skip" style="width:100%" onclick="skipActivity()">Skip Practice</button>
+            </div>
+        `;
+    }
+
+    function skipActivity() {
+        session.skippedActivity = true;
+        renderMood('post');
+    }
+
+    function saveAndFinish() {
+        const logs = JSON.parse(localStorage.getItem('logs') || "[]");
+        logs.unshift({ ...session, timestamp: new Date().toISOString() });
+        localStorage.setItem('logs', JSON.stringify(logs.slice(0, 50)));
+
+        const diff = session.postMood - session.preMood;
+        document.getElementById('mainUI').innerHTML = `
+            <div class="card">
+                <h2>Check-in Saved</h2>
+                <p>${diff > 0 ? 'Your mood improved by '+diff+' points!' : 'Session complete.'}</p>
+                <button class="btn" onclick="showHome()">Back to Home</button>
+            </div>
+        `;
+    }
+
+    function showHistory() {
+        const ui = document.getElementById('mainUI');
+        const logs = JSON.parse(localStorage.getItem('logs') || "[]");
+        let html = `<div class="card"><h2>Passed Reports</h2>`;
+        if (logs.length === 0) html += `<p>No data yet.</p>`;
+
+        logs.forEach(log => {
+            const date = new Date(log.timestamp).toLocaleString([], {month:'numeric', day:'numeric', hour:'2-digit', minute:'2-digit'});
+            const diff = (log.postMood && log.preMood) ? (log.postMood - log.preMood) : 0;
+            html += `
+                <div class="history-item" style="text-align:left; border-bottom:1px solid #eee; padding:10px 0;">
+                    <div style="display:flex; justify-content:space-between;">
+                        <small>${date}</small>
+                        <strong style="color:${diff > 0 ? 'var(--green)' : 'var(--gray)'}">${diff > 0 ? '+' : ''}${diff} Mood</strong>
+                    </div>
+                    <div style="font-size:0.7rem; color:var(--gray);">${Object.entries(log.answers || {}).map(([k,v]) => `${k}:<b>${v}</b>`).join(' • ')}</div>
+                </div>`;
+        });
+        html += `<button class="btn btn-outline" style="margin-top:20px" onclick="showHome()">Back</button></div>`;
+        ui.innerHTML = html;
+    }
+
+    window.onload = showHome;
+</script>
